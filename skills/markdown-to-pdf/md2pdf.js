@@ -45,12 +45,14 @@ function parseArgs(argv) {
   return opts;
 }
 
-// Install the render dependencies into the skill directory on first use.
+// Install the render dependencies into the skill directory on first use. Plain
+// `npm install` keeps the versions pinned in package.json and package-lock.json;
+// naming the packages would fetch their latest releases instead.
 function ensureDeps() {
   const missing = DEPS.filter(d => !fs.existsSync(path.join(SKILL_DIR, 'node_modules', d)));
   if (missing.length === 0) return;
-  console.error(`installing render dependencies (${missing.join(', ')})...`);
-  execFileSync('npm', ['install', '--no-audit', '--no-fund', ...DEPS], {
+  console.error(`installing render dependencies (${missing.join(', ')})`);
+  execFileSync('npm', ['install', '--no-audit', '--no-fund', '--omit=dev'], {
     cwd: SKILL_DIR, stdio: 'inherit'
   });
 }
