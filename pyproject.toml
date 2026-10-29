@@ -1,0 +1,30 @@
+[project]
+name = "claude-skills"
+version = "1.0.0"
+description = "Claude Code skills: Markdown to PDF rendering, EC2 ML training guidance and a time-series look-ahead audit."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "scipy>=1.13",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
