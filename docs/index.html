@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>claude-skills</title>
+  <meta name="description" content="Three Claude Code skills: Markdown to PDF with vector mermaid diagrams, EC2 offload guidance for ML training, and a look-ahead bias audit for time-series datasets.">
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans:wght@400;600&display=swap">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header class="site-bar">
+    <a href="https://darblinko.github.io/">Mitchell Foutz</a>
+    <a href="https://github.com/darblinko/claude-skills">Source on GitHub</a>
+  </header>
+
+  <main>
+    <section class="intro">
+      <h1>claude-skills</h1>
+      <p class="lede">Three Claude Code skills, each a folder with a <code>SKILL.md</code> that Claude loads when a request matches it: Markdown to paginated PDF, EC2 offload for ML training, and a look-ahead bias audit for time-series datasets.</p>
+      <dl class="record">
+        <div><dt>Repository</dt><dd>darblinko/claude-skills</dd></div>
+        <div><dt>Revision</dt><dd><code>2add084</code></dd></div>
+        <div><dt>Measured</dt><dd>2026-10-28</dd></div>
+        <div><dt>License</dt><dd>Apache-2.0</dd></div>
+      </dl>
+    </section>
+
+    <section>
+      <h2>Problem</h2>
+      <p>Two failures that pass without an error message. Chrome's print engine clips anything that overflows the page box instead of continuing it on the next page, so a mermaid diagram taller than one page loses its lower part. In a time-series dataset, a feature built with <code>groupby(bucket).transform("last")</code> gives every bar the bucket's final value, so on 1-minute bars in 5-minute buckets 4 of every 5 bars read a close recorded after them.</p>
+      <aside class="note">
+        <p>The 4 of 5 figure is asserted in <code>tests/test_lookahead_patterns.py</code> and plotted below from <code>docs/data.json</code>. The tall-diagram case is <code>skills/markdown-to-pdf/test/fixtures/tall.md</code>.</p>
+      </aside>
+    </section>
+
+    <section>
+      <h2>How it works</h2>
+      <p>Claude Code reads only each skill's <code>name</code> and <code>description</code> until a request matches, then loads the full <code>SKILL.md</code>. The PDF skill runs a script; the other two are instructions with code patterns. The renderer pipeline:</p>
+      <pre class="mermaid">
+flowchart TD
+  md[Markdown file] --> extract[Extract mermaid fences]
+  extract --> html[markdown-it to HTML]
+  html --> chrome[Chromium at printed width]
+  chrome --> render[mermaid to SVG]
+  render --> fit{Fits the page?}
+  fit -- yes --> scale[Scale to fit]
+  fit -- too tall --> slice[Slice across pages]
+  fit -- far too wide --> band[Stacked bands]
+  scale --> pdf[PDF with header and footer]
+  slice --> pdf
+  band --> pdf
+      </pre>
+      <aside class="note">
+        <p>Thresholds: <code>LEGIBLE_SCALE</code>, <code>TARGET_SCALE</code> and <code>MAX_BANDS</code> in <code>skills/markdown-to-pdf/md2pdf.js</code>.</p>
+      </aside>
+    </section>
+
+    <section>
+      <h2>Measured results</h2>
+      <p>The look-ahead skill's Python blocks, executed as written from its <code>SKILL.md</code> on synthetic random-walk bars. First, which bucket patterns read a later close under three bar conditions; then the correlation audit on a dataset with two planted leaks.</p>
+      <figure class="chart" data-chart="future-reads"></figure>
+      <figure class="chart" data-chart="audit-correlations"></figure>
+      <aside class="note">
+        <p>Reproduce: <code>uv run python examples/lookahead_demo.py</code> writes <code>docs/data.json</code>.</p>
+      </aside>
+    </section>
+
+    <section>
+      <h2>Run it</h2>
+      <ol class="steps">
+        <li><pre><code>git clone https://github.com/darblinko/claude-skills
+cp -r claude-skills/skills/markdown-to-pdf ~/.claude/skills/</code></pre></li>
+        <li><pre><code>cd claude-skills
+uv sync &amp;&amp; uv run pytest -q</code></pre></li>
+        <li><pre><code>cd skills/markdown-to-pdf
+npm ci &amp;&amp; npx playwright-core install chromium &amp;&amp; npm test</code></pre></li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Limitations</h2>
+      <ul>
+        <li>The original daily-merge fix in the look-ahead skill shifted the date key with the values and removed no look-ahead. It is fixed, and a test keeps the original pattern as a negative case.</li>
+        <li>The row-count bucket shift is leak-free only for bars of 1 minute or longer; on 30-second bars it reads later closes (chart above). The gap-safe variant does not.</li>
+        <li>The look-ahead measurements use synthetic data and say nothing about effect size on a real model.</li>
+        <li><code>ec2-ml-training</code> ships no scripts; nothing in the repository runs its interface.</li>
+        <li>The PDF tests check structure, not visual layout. A narrow, tall diagram is scaled up to the column width before slicing and can span many pages.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    claude-skills. Apache-2.0. Figures generated from <code>docs/data.json</code> at <code>2add084</code>.
+  </footer>
+
+  <script src="charts.js" defer></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs";
+    const dark = document.documentElement.dataset.theme === "dark" ||
+      (document.documentElement.dataset.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+    mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral",
+      fontFamily: "IBM Plex Sans, system-ui, sans-serif", securityLevel: "strict" });
+  </script>
+</body>
+</html>

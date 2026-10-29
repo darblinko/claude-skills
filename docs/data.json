@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "repo": "claude-skills",
+    "revision": "2add084",
+    "measured": "2026-10-28"
+  },
+  "charts": [
+    {
+      "name": "audit-correlations",
+      "type": "hbar",
+      "title": "Feature correlation with the 5-minute forward return",
+      "subtitle": "lookahead_audit on 10 synthetic sessions of 1-minute bars, seed 1",
+      "source": "python examples/lookahead_demo.py",
+      "alt": "peek_3m |r| 0.77; bucket_gap_leaky |r| 0.65; bucket_gap_safe |r| 0.02; return_1m |r| 0.01. Features above 0.15 are flagged.",
+      "format": "decimal2",
+      "max": 1,
+      "threshold": {
+        "value": 0.15,
+        "label": "flag above 0.15"
+      },
+      "data": [
+        {
+          "label": "peek_3m",
+          "value": 0.773,
+          "status": "fail"
+        },
+        {
+          "label": "bucket_gap_leaky",
+          "value": 0.647,
+          "status": "fail"
+        },
+        {
+          "label": "bucket_gap_safe",
+          "value": 0.016,
+          "status": "pass"
+        },
+        {
+          "label": "return_1m",
+          "value": 0.006,
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "future-reads",
+      "type": "columns",
+      "title": "Share of bars whose 5-minute bucket feature reads a later close",
+      "subtitle": "2 synthetic sessions per condition, seed 0",
+      "source": "python examples/lookahead_demo.py",
+      "alt": "leaky: 80%, 77%, 90%. row shift: 0%, 0%, 40%. gap-safe: 0%, 0%, 0%. Conditions in order: 1-minute bars; 1-minute with 10% missing; 30-second bars.",
+      "format": "percent",
+      "categories": [
+        "1-minute bars",
+        "1-minute with 10% missing",
+        "30-second bars"
+      ],
+      "series": [
+        {
+          "name": "leaky",
+          "values": [
+            0.8,
+            0.7729,
+            0.9
+          ]
+        },
+        {
+          "name": "row shift",
+          "values": [
+            0.0,
+            0.0,
+            0.4
+          ]
+        },
+        {
+          "name": "gap-safe",
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    }
+  ]
+}
