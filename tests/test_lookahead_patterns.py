@@ -101,3 +101,9 @@ def test_audit_skips_the_target_and_known_forward_columns(skill):
     scores = dict(skill["lookahead_audit"](audit_dataset(skill), "fwd_return_5m", threshold=0.0))
     assert "fwd_return_5m" not in scores
     assert "mfe_5m" not in scores
+
+
+def test_audit_skips_a_target_without_a_known_prefix(skill):
+    dataset = audit_dataset(skill).rename(columns={"fwd_return_5m": "label"})
+    scores = dict(skill["lookahead_audit"](dataset, "label", threshold=0.0))
+    assert "label" not in scores
