@@ -1,0 +1,175 @@
+@page { size: Letter; }
+
+:root {
+  --ink: #1a2433;
+  --muted: #5b6b80;
+  --rule: #d4dce6;
+  --rule-soft: #e8edf3;
+  --accent: #1f4e79;
+  --panel: #f5f8fb;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font: 10.5pt/1.55 "Charter", "Georgia", "DejaVu Serif", serif;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Page margins are deliberately narrow (6mm) so wide diagrams can reach the
+   paper edge; this padding restores a readable measure for everything else. */
+main { max-width: 100%; padding: 0 10mm; }
+
+/* headings */
+h1, h2, h3, h4 {
+  font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--accent);
+  line-height: 1.25;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+h1 {
+  font-size: 20pt;
+  letter-spacing: -0.01em;
+  margin: 0 0 14pt;
+  padding-bottom: 8pt;
+  border-bottom: 2.5pt solid var(--accent);
+}
+
+h2 {
+  font-size: 14pt;
+  margin: 22pt 0 8pt;
+  padding-bottom: 4pt;
+  border-bottom: 0.75pt solid var(--rule);
+  break-before: auto;
+}
+
+h3 { font-size: 11.5pt; margin: 16pt 0 5pt; color: #2b4a68; }
+h4 { font-size: 10.5pt; margin: 12pt 0 4pt; color: var(--muted); }
+
+p { margin: 0 0 8pt; orphans: 3; widows: 3; }
+
+strong { color: #0f1c2b; }
+em { color: inherit; }
+
+a { color: var(--accent); text-decoration: none; }
+
+hr {
+  border: 0;
+  border-top: 0.75pt solid var(--rule);
+  margin: 16pt 0;
+}
+
+/* lists */
+ul, ol { margin: 0 0 9pt; padding-left: 18pt; }
+li { margin-bottom: 3pt; }
+li > ul, li > ol { margin-top: 3pt; }
+
+/* code */
+code {
+  font-family: "DejaVu Sans Mono", "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.86em;
+  background: #eef2f7;
+  border: 0.5pt solid #dde4ec;
+  border-radius: 2pt;
+  padding: 0.5pt 3pt;
+  color: #1c3a57;
+}
+
+pre {
+  background: var(--panel);
+  border: 0.75pt solid var(--rule);
+  border-left: 2.5pt solid var(--accent);
+  border-radius: 3pt;
+  padding: 8pt 10pt;
+  /* Print clips horizontal overflow rather than scrolling it, so long lines
+     must wrap or they are silently lost off the right edge. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+pre code { background: none; border: 0; padding: 0; font-size: 8.5pt; line-height: 1.45; }
+
+/* blockquote */
+blockquote {
+  margin: 10pt 0;
+  padding: 8pt 12pt;
+  background: #fff8e8;
+  border-left: 3pt solid #d9a441;
+  border-radius: 0 3pt 3pt 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+blockquote p { margin: 0 0 5pt; }
+blockquote p:last-child { margin-bottom: 0; }
+
+/* tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10pt 0 14pt;
+  font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 8.5pt;
+  line-height: 1.4;
+}
+
+thead { display: table-header-group; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+
+th {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  text-align: left;
+  padding: 5pt 6pt;
+  border: 0.5pt solid var(--accent);
+  vertical-align: bottom;
+}
+
+td {
+  padding: 4.5pt 6pt;
+  border: 0.5pt solid var(--rule);
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) td { background: #f6f9fc; }
+
+td code, th code { font-size: 0.92em; background: #e6ecf4; }
+
+/* mermaid */
+.mermaid-slot {
+  /* break out of the text column: wide flowcharts need every millimetre */
+  width: calc(100% + 20mm);
+  margin: 12pt 0 16pt -10mm;
+  padding: 8pt 4pt;
+  background: #fcfdfe;
+  border: 0.75pt solid var(--rule-soft);
+  border-radius: 4pt;
+  text-align: center;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.mermaid-slot svg { max-width: 100%; height: auto; }
+
+/* A diagram too tall for one page is shown as a stack of clipped windows;
+   the slot must break between them, each window must not break inside. */
+.mermaid-slot.sliced { break-inside: auto; page-break-inside: auto; padding: 0; }
+.diagram-slice, .diagram-band {
+  overflow: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* A diagram far wider than the page is cut into full-width bands read top to bottom. */
+.mermaid-slot.banded { text-align: left; }
+.diagram-band + .diagram-band {
+  margin-top: 6pt;
+  padding-top: 6pt;
+  border-top: 0.5pt dashed var(--rule);
+}
+.mermaid-slot .nodeLabel, .mermaid-slot .edgeLabel { line-height: 1.3; }
