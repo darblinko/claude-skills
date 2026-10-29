@@ -12,7 +12,7 @@ user-invocable: false
 
 ML models trained on time-series feature datasets show high accuracy that does not degrade between in-sample and out-of-sample periods. Common causes:
 
-1. **Resample/bucket leak**: `groupby().transform("last")` or `.resample("5min").last()` on time-series data assigns the END-of-bucket value to ALL bars in the bucket. A bar at 10:01 sees the 10:04 close (4-minute look-ahead for 5m buckets, 14-minute for 15m).
+1. **Resample/bucket leak**: `groupby().transform("last")` or `.resample("5min").last()` on time-series data assigns the END-of-bucket value to ALL bars in the bucket. A bar at 10:01 sees the 10:04 close, 3 minutes ahead. The first bar of a bucket reads furthest ahead: 4 minutes in 5m buckets, 14 minutes in 15m buckets.
 
 2. **Daily data merge leak**: Merging daily close values (VIX, economic data) by same-day date means at 9:30 AM the model sees the 4:15 PM close (about 7 hours of look-ahead).
 
@@ -54,7 +54,7 @@ column as suspicious, with its |r|.
 
 ## Fix Patterns
 
-All three functions take pandas objects aligned on the same index: `df` is a
+The three bucket functions take pandas objects aligned on the same index: `df` is a
 frame of bars in time order, `bucket_start` is each bar's bucket start time
 (for example `df.index.floor("5min")` as a Series), and `trading_day` is each
 bar's session date.
@@ -62,6 +62,9 @@ bar's session date.
 ### Resample bucket fix
 
 ```python
+import pandas as pd
+
+
 def bucket_last_leaky(df, col, bucket_start):
     # WRONG: every bar in a bucket sees the bucket's final value.
     return df.groupby(bucket_start)[col].transform("last")
