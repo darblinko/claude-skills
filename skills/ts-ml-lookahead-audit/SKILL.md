@@ -23,49 +23,85 @@ ML models trained on time-series feature datasets show high accuracy that does n
 Run this on any ML dataset before training:
 
 ```python
+import numpy as np
+import pandas as pd
 from scipy.stats import pearsonr
 
-target_col = "fwd_return_5m"  # or whatever your target is
-sample = df.sample(5000, random_state=42)
-fwd = sample[target_col].dropna()
-sample_clean = sample.loc[fwd.index]
+KNOWN_TARGET_PREFIXES = ("fwd_", "mae_", "mfe_")
 
-for col in sample_clean.select_dtypes(include=[np.number]).columns:
-    if col.startswith("fwd_") or col.startswith("mae_") or col.startswith("mfe_"):
-        continue  # skip known targets
-    valid = sample_clean[[col, target_col]].dropna()
-    if len(valid) < 100:
-        continue
-    r, _ = pearsonr(valid[col], valid[target_col])
-    if abs(r) > 0.15:
-        print(f"SUSPICIOUS: {col} |r|={abs(r):.4f}")
+
+def lookahead_audit(df, target_col, threshold=0.15, sample_size=5000, seed=42):
+    """Return (column, |r|) pairs for numeric features suspiciously correlated with the target."""
+    sample = df.sample(min(sample_size, len(df)), random_state=seed)
+    sample = sample[sample[target_col].notna()]
+    suspicious = []
+    for col in sample.select_dtypes(include=[np.number]).columns:
+        if col == target_col or col.startswith(KNOWN_TARGET_PREFIXES):
+            continue  # the target itself and known forward-looking columns
+        valid = sample[[col, target_col]].dropna()
+        if len(valid) < 100 or valid[col].nunique() < 2:
+            continue
+        r, _ = pearsonr(valid[col], valid[target_col])
+        if abs(r) > threshold:
+            suspicious.append((col, float(abs(r))))
+    return sorted(suspicious, key=lambda pair: -pair[1])
 ```
 
-**Red flags**: Any feature with |r| > 0.15 against a short-horizon forward return. Honest 1-minute features rarely exceed |r| = 0.05.
+Call it as `lookahead_audit(df, "fwd_return_5m")` and report every returned
+column as suspicious, with its |r|.
+
+**Red flags**: Any feature with |r| > 0.15 against a short-horizon forward return. Honest 1-minute features rarely exceed |r| = 0.05. Both thresholds are rules of thumb; tune them to the horizon and the asset.
 
 ## Fix Patterns
 
-### Resample bucket fix
-```python
-# WRONG: look-ahead
-resampled = df.groupby(bucket_key)[col].transform("last")
+All three functions take pandas objects aligned on the same index: `df` is a
+frame of bars in time order, `bucket_start` is each bar's bucket start time
+(for example `df.index.floor("5min")` as a Series), and `trading_day` is each
+bar's session date.
 
-# RIGHT: shift by one bucket
-bucket_last = df.groupby(bucket_key)[col].transform("last")
-resampled = bucket_last.groupby(trading_day).shift(freq_minutes)
+### Resample bucket fix
+
+```python
+def bucket_last_leaky(df, col, bucket_start):
+    # WRONG: every bar in a bucket sees the bucket's final value.
+    return df.groupby(bucket_start)[col].transform("last")
+
+
+def bucket_last_safe(df, col, bucket_start, trading_day, bucket_minutes):
+    # RIGHT for 1-minute bars: shift by one bucket's worth of rows. The shift
+    # counts rows. Missing bars make it reach further back (stale, no leak);
+    # bars finer than 1 minute make it land inside the current bucket (a leak).
+    bucket_last = df.groupby(bucket_start)[col].transform("last")
+    return bucket_last.groupby(trading_day).shift(bucket_minutes)
+
+
+def bucket_last_safe_with_gaps(df, col, bucket_start, trading_day):
+    # RIGHT when bars can be missing: take the previous bucket's last value per day.
+    last = df[col].groupby([trading_day, bucket_start]).last()
+    previous = last.groupby(level=0).shift(1)
+    keys = pd.MultiIndex.from_arrays([trading_day, bucket_start])
+    return pd.Series(previous.reindex(keys).to_numpy(), index=df.index)
 ```
 
 ### Daily data merge fix
-```python
-# WRONG: same-day merge
-df.merge(daily_data, left_on="date", right_on="date")
 
-# RIGHT: shift daily data by one row before merging
-daily_shifted = daily_data.copy()
-for col in daily_shifted.columns:
-    daily_shifted[col] = daily_shifted[col].shift(1)
-df.merge(daily_shifted, left_on="date", right_on="date")
+```python
+def merge_daily_leaky(intraday, daily, on="date"):
+    # WRONG: at 09:30 each bar sees that day's close.
+    return intraday.merge(daily, on=on, how="left")
+
+
+def merge_daily_safe(intraday, daily, on="date"):
+    # RIGHT: each date carries the previous row's values. Shift the value columns
+    # only; shifting the date column with them leaves every pairing unchanged.
+    daily = daily.sort_values(on)
+    value_cols = [c for c in daily.columns if c != on]
+    shifted = daily.assign(**{c: daily[c].shift(1) for c in value_cols})
+    return intraday.merge(shifted, on=on, how="left")
 ```
+
+`merge_daily_safe` assumes one row per trading day, so the previous row is the
+previous session.
 
 ## When to Use
 
