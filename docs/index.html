@@ -73,6 +73,7 @@ flowchart TD
       <h2>Run it</h2>
       <ol class="steps">
         <li><pre><code>git clone https://github.com/darblinko/claude-skills
+mkdir -p ~/.claude/skills
 cp -r claude-skills/skills/markdown-to-pdf ~/.claude/skills/</code></pre></li>
         <li><pre><code>cd claude-skills
 uv sync &amp;&amp; uv run pytest -q</code></pre></li>
