@@ -134,8 +134,9 @@ uv sync
 uv run ruff check . && uv run ruff format --check .
 uv run pytest -q
 
-# Regenerate docs/data.json and the README charts
+# Regenerate docs/data.json, then the README SVGs and snippets (steps: tools/README.md)
 uv run python examples/lookahead_demo.py
+python3 tools/svgchart.py docs/data.json docs/figures
 
 # Node: markdown-to-pdf smoke tests (renders PDFs with Chromium)
 cd skills/markdown-to-pdf
@@ -152,7 +153,8 @@ skills/
   ec2-ml-training/        SKILL.md (guidance only)
   ts-ml-lookahead-audit/  SKILL.md
 examples/lookahead_demo.py   measures the look-ahead patterns, writes docs/data.json
-tests/                       pytest: look-ahead patterns, skill layout, relative links
+tools/svgchart.py            renders docs/data.json to the README SVGs (vendored, stdlib only)
+tests/                       pytest: look-ahead patterns, figure freshness, skill layout, relative links
 docs/                        data.json, README figures, landing page
 .github/workflows/ci.yml     ruff, pytest, md2pdf smoke tests
 ```

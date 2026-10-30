@@ -21,6 +21,8 @@ package = false
 
 [tool.ruff]
 line-length = 100
+# Vendored chart renderer, kept in its upstream formatting.
+extend-exclude = ["tools/svgchart.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
