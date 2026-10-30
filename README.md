@@ -75,7 +75,7 @@ flowchart TD
 
 [skills/ec2-ml-training/README.md](skills/ec2-ml-training/README.md)
 
-Guidance only; no code ships with it. It defines a two-script interface (`scripts/ec2_config.sh` holds every value, `scripts/ec2_training.sh` holds the lifecycle) and covers instance sizing, which gradient-boosting libraries gain from a GPU, the XGBoost 3.x `device="cuda"` change, AMI lookup, the `scp -r` nesting failure and cost rules.
+Guidance only; no code ships with it. It defines a two-script interface (`scripts/ec2_config.sh` holds every value, `scripts/ec2_training.sh` holds the lifecycle) and covers instance sizing, GPU support in XGBoost, LightGBM and CatBoost with a rule to benchmark CPU against GPU, the XGBoost move from `gpu_hist` (deprecated in 2.0, removed in 3.1) to `device="cuda"`, AMI lookup, the `scp -r` nesting failure and cost rules.
 
 ### ts-ml-lookahead-audit
 

@@ -20,18 +20,21 @@ Claude writes them to that interface.
 
 - Instance selection for CPU and GPU training, with RAM sizing from one recorded
   run.
-- Which gradient-boosting libraries gain from a GPU (XGBoost) and which do not
-  (LightGBM, CatBoost).
-- The XGBoost 3.x change from `tree_method="gpu_hist"` to `device="cuda"`.
+- GPU support in XGBoost, LightGBM and CatBoost, the instance each used in the
+  author's runs, and a rule to benchmark CPU against GPU per workload.
+- The XGBoost change from `tree_method="gpu_hist"` (deprecated in 2.0, removed
+  in 3.1) to `device="cuda"`.
 - AMI lookup commands instead of hardcoded AMI IDs.
 - The `scp -r` directory nesting failure and how `EC2_REMOTE_DIRS` avoids it.
 - Cost rules and a failure-mode table.
 
 ## Limitations
 
-- The instance prices in `SKILL.md` were recorded 2026-05 for Linux on-demand
-  instances. They change; check current pricing for the region.
-- The timings and RAM figures in `SKILL.md` come from one set of runs on tabular
-  gradient-boosting workloads and do not transfer to deep learning jobs.
+- The instance prices in `SKILL.md` are approximate Linux on-demand rates noted
+  2026-05. The region was not recorded and the figures were not checked against
+  AWS pricing pages; check current pricing for the region.
+- The timings and RAM figures in `SKILL.md` come from the author's single
+  reported run on tabular gradient-boosting workloads. No benchmark artifacts
+  are published, and the figures do not transfer to deep learning jobs.
 - The skill assumes the AWS CLI is configured with credentials that can launch
   and terminate instances. It does not cover IAM policy design.

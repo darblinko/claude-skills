@@ -1,6 +1,6 @@
 ---
 name: ec2-ml-training
-description: Use when an ML training run needs more RAM or a GPU than the local machine has and should run on a temporary EC2 instance. Covers the config and workflow script split, instance and algorithm selection, S3 data transfer, XGBoost 3.x GPU settings, cost rules and common failure modes.
+description: Use when an ML training run needs more RAM or a GPU than the local machine has and should run on a temporary EC2 instance. Covers the config and workflow script split, instance and algorithm selection, S3 data transfer, XGBoost GPU settings, cost rules and common failure modes.
 ---
 
 # EC2 ML Training
@@ -29,7 +29,7 @@ Two files, separation of concerns:
 # XGBoost GPU training
 ./scripts/ec2_training.sh --gpu
 
-# CPU training (use for LightGBM/CatBoost, which gain little from a GPU)
+# CPU training (the author's configuration for LightGBM/CatBoost)
 ./scripts/ec2_training.sh
 
 # Custom command (bypass the default train script)
@@ -78,21 +78,24 @@ environment, never in the workflow script.
 
 ## Instance selection
 
-| Instance | vCPU | RAM | GPU | On-demand $/hr | When to use |
+| Instance | vCPU | RAM | GPU | Approx. on-demand $/hr | When to use |
 |---|---|---|---|---|---|
-| g4dn.xlarge | 4 | 16 GB | T4 | 0.53 | Small datasets only. OOM risk on large ones. |
-| g4dn.2xlarge | 8 | 32 GB | T4 | 0.75 | XGBoost GPU training on large datasets |
-| r5.2xlarge | 8 | 64 GB | None | 0.50 | CPU training, LightGBM/CatBoost, dataset builds. Lowest price per GB of RAM of the three. |
+| g4dn.xlarge | 4 | 16 GB | T4 | about 0.53 | Small datasets only. OOM risk on large ones. |
+| g4dn.2xlarge | 8 | 32 GB | T4 | about 0.75 | GPU training on large datasets |
+| r5.2xlarge | 8 | 64 GB | None | about 0.50 | CPU training, dataset builds. Most RAM of the three. |
 
-Prices are Linux on-demand rates as recorded 2026-05. Verify current pricing
-for your region before relying on them.
+Prices are approximate Linux on-demand rates noted by the author in 2026-05.
+The region was not recorded and the figures have not been checked against the
+AWS pricing pages. Look up current pricing for your region before relying on
+them.
 
 ### Size RAM for feature preparation, not for the file
 
-In one recorded run, a dataset of about 1M rows by 553 numeric columns needed
-15 to 20 GB once loaded, prepared and trained on, and a g4dn.xlarge (16 GB) was
-OOM-killed during SHAP feature selection. Choose an instance with at least
-twice the expected in-memory size of the prepared dataset.
+In the author's single reported run (no benchmark artifacts are published), a
+dataset of about 1M rows by 553 numeric columns needed about 15 to 20 GB once
+loaded, prepared and trained on, and a g4dn.xlarge (16 GB) was OOM-killed
+during SHAP feature selection. Choose an instance with at least twice the
+expected in-memory size of the prepared dataset.
 
 ### On-demand vs Spot
 
@@ -102,42 +105,52 @@ that can be retried cheaply.
 
 ## Algorithm selection and GPU benefit
 
-| Algorithm | GPU benefit | Recorded run (800K rows, 60 trials) | Instance |
+| Algorithm | GPU support in the library | Author's reported run (800K rows, 60 trials) | Instance used |
 |---|---|---|---|
-| **XGBoost** | **Yes** (`device="cuda"`, 3 to 5x faster) | about 19 min GPU, about 60 min CPU | g4dn.2xlarge |
-| **LightGBM** | **No** (CPU-only in practice) | about 45 min CPU | r5.2xlarge |
-| **CatBoost** | Marginal (`task_type="GPU"`) | about 45 min | r5.2xlarge |
+| **XGBoost** | Yes (`device="cuda"`) | about 19 min GPU, about 60 min CPU | g4dn.2xlarge |
+| **LightGBM** | Yes (GPU build, `device="gpu"`, OpenCL) | about 45 min CPU; GPU not run | r5.2xlarge |
+| **CatBoost** | Yes (`task_type="GPU"`) | about 45 min CPU; GPU not run | r5.2xlarge |
 
-Timings come from one recorded run. Treat them as order of magnitude.
+The timings come from the author's single reported run; no benchmark artifacts
+are published. Treat them as order of magnitude. All three libraries document
+GPU training: the LightGBM GPU tutorial reports over 3x speedup on its test
+dataset, and the CatBoost documentation states that GPU training speeds up
+datasets from tens of thousands of objects upward. The CPU instance for
+LightGBM and CatBoost was the author's configuration, not a library limit.
+Benchmark CPU against GPU on a sample of the actual workload before choosing
+the instance.
 
 ### When to benchmark multiple algorithms
 
-- **Easy tasks** (PR-AUC > 0.90, e.g. a volatility-style target): **XGBoost only.** The algorithms converge to the same answer, and benchmarking wastes GPU time.
-- **Hard tasks** (PR-AUC < 0.60, e.g. the sign of a short-horizon return): **Benchmark XGBoost first**, then LightGBM/CatBoost on the 1 or 2 most promising sub-models only.
+- **Judge PR-AUC against its baseline.** The no-skill PR-AUC equals the positive-class prevalence of the validation set, so an absolute value such as 0.85 says nothing about difficulty on its own. Compare the validation PR-AUC with the prevalence and look at its spread across CV folds.
+- **Train XGBoost first.** Add LightGBM/CatBoost when the comparison could change the decision: the lift over baseline is small relative to fold-to-fold variation, or the expected gain justifies the measured training cost of another run. Restrict the comparison to the 1 or 2 most promising sub-models.
 - **Categorical-heavy tasks**: CatBoost's native categorical handling may help. Worth benchmarking.
 
 ### Optuna trial count guidance
 
-| Task difficulty | PR-AUC range | Recommended trials |
+| Task difficulty | Indicator on validation data | Recommended trials |
 |---|---|---|
-| Easy | > 0.85 | 20 to 30 |
-| Medium | 0.50 to 0.85 | 40 to 60 |
-| Hard | < 0.50 | 60 to 80 |
+| Easy | Large PR-AUC lift over prevalence; CV score plateaus early | 20 to 30 |
+| Medium | Clear lift over prevalence; CV score still improving | 40 to 60 |
+| Hard | Small lift over prevalence; high fold-to-fold variance | 60 to 80 |
 
-## XGBoost 3.x GPU configuration
+These trial counts are the author's heuristics, not measured results.
 
-XGBoost 3.x **removed `gpu_hist`**. Use:
+## XGBoost GPU configuration
+
+XGBoost 2.0 deprecated `gpu_hist` and `gpu_id` in favor of the `device`
+parameter, and XGBoost 3.1 removed them. Use:
 
 ```python
-# CORRECT (XGBoost 3.x)
+# CORRECT (XGBoost 2.0 and later)
 xgb.XGBClassifier(
     tree_method="hist",
     device="cuda",  # or "cpu"
 )
 
-# WRONG (XGBoost 2.x, errors on 3.x)
+# WRONG (deprecated in 2.0, removed in 3.1)
 xgb.XGBClassifier(
-    tree_method="gpu_hist",  # Invalid in 3.x
+    tree_method="gpu_hist",  # Invalid from 3.1
 )
 ```
 
@@ -202,11 +215,11 @@ EC2_PIP_PACKAGES="pandas pyarrow numpy scipy scikit-learn xgboost lightgbm catbo
 
 ## Cost rules
 
-1. **Do not benchmark every algorithm on easy tasks.** If XGBoost reaches PR-AUC > 0.85, LightGBM and CatBoost will not differ materially. Skip them.
-2. **Match the instance to the algorithm.** A GPU (g4dn) only helps XGBoost. For LightGBM/CatBoost, use r5.2xlarge (more RAM, lower price).
+1. **Do not benchmark every algorithm by default.** Decide from the XGBoost validation PR-AUC relative to the prevalence baseline, its spread across CV folds, and the measured cost of another training run. A high absolute PR-AUC does not show that other algorithms cannot differ materially.
+2. **Match the instance to the measured workload.** XGBoost, LightGBM and CatBoost all support GPU training. Time a sample run on CPU and on GPU, then choose the instance with the lower cost per completed run. In the author's setup, LightGBM/CatBoost ran on r5.2xlarge for its RAM.
 3. **Reduce trials on predictable tasks.** 60 Optuna trials is excessive when the CV score plateaus by trial 20. Check with fewer trials first.
 4. **Gate before expanding.** Do not train downstream models until upstream gates pass. Do not benchmark 3 algorithms until 1 algorithm shows the task is viable.
-5. **Terminate promptly.** At the recorded 0.75 $/hr, a g4dn.2xlarge left idle for 12 hours costs 9 dollars.
+5. **Terminate promptly.** An instance left idle for 12 hours costs 12 times its hourly rate; at the approximate 0.75 $/hr in the table, a g4dn.2xlarge costs about 9 dollars.
 6. **Use `--keep` only for debugging.** The default auto-terminates on success. Keep an instance alive only to inspect a failure over SSH.
 
 ## Safety
@@ -222,7 +235,7 @@ EC2_PIP_PACKAGES="pandas pyarrow numpy scipy scikit-learn xgboost lightgbm catbo
 |---|---|---|
 | OOM kill (process disappears, no error in log) | Instance RAM too small (e.g. g4dn.xlarge, 16 GB) | Use g4dn.2xlarge (32 GB) or r5.2xlarge (64 GB) |
 | `ImportError: cannot import name X` | scp nesting created `src/src/` | Check `EC2_REMOTE_DIRS`; remove subdirs and let scp create them |
-| `Invalid Input: 'gpu_hist'` | XGBoost 3.x API change | Use `tree_method="hist"` with `device="cuda"` |
-| LightGBM/CatBoost slow | Running on a GPU instance with no GPU benefit | Use r5.2xlarge (CPU) instead: same speed, lower price |
+| `Invalid Input: 'gpu_hist'` | XGBoost 3.1 removed `gpu_hist` (deprecated since 2.0) | Use `tree_method="hist"` with `device="cuda"` |
+| LightGBM/CatBoost slow on a GPU instance | GPU training not enabled (LightGBM CPU build, or CatBoost without `task_type="GPU"`) | Enable GPU training and time it, or move to a CPU instance such as r5.2xlarge |
 | SSH timeout during long training | Default SSH keepalive too short | Use `--keep` with nohup, or add `-o ServerAliveInterval=60` |
 | Download fails but training succeeded | `EC2_VERIFY_MODELS` paths do not match the output | Check the report and model paths in the training script |
