@@ -78,7 +78,8 @@ cp -r claude-skills/skills/markdown-to-pdf ~/.claude/skills/</code></pre></li>
         <li><pre><code>cd claude-skills
 uv sync &amp;&amp; uv run pytest -q</code></pre></li>
         <li><pre><code>cd skills/markdown-to-pdf
-npm ci &amp;&amp; npx playwright-core install chromium &amp;&amp; npm test</code></pre></li>
+npm ci &amp;&amp; npx playwright-core install chromium
+npm test   # needs poppler-utils</code></pre></li>
       </ol>
     </section>
 
@@ -89,7 +90,7 @@ npm ci &amp;&amp; npx playwright-core install chromium &amp;&amp; npm test</code
         <li>The row-count bucket shift is leak-free only for bars of 1 minute or longer; on 30-second bars it reads later closes (chart above). The gap-safe variant does not.</li>
         <li>The look-ahead measurements use synthetic data and say nothing about effect size on a real model.</li>
         <li><code>ec2-ml-training</code> ships no scripts; nothing in the repository runs its interface.</li>
-        <li>The PDF tests check structure, not visual layout. A narrow, tall diagram is scaled up to the column width before slicing and can span many pages.</li>
+        <li>The PDF tests check page counts, extracted text and embedded images, not visual layout. A narrow, tall diagram is scaled up to the column width before slicing and can span many pages.</li>
       </ul>
     </section>
   </main>

@@ -11,8 +11,9 @@ runs on its own.
 
 - Node.js 20.19 or later (`engines` in `package.json`). The pinned `playwright-core`
   requires Node 20 and its `entities` dependency requires 20.19.0.
-- A Chromium build. `md2pdf.js` checks `CHROME_PATH`, then the Playwright browser
-  cache, then common system Chrome and Chromium paths. To install the build that
+- A Chromium build. `md2pdf.js` checks `CHROME_PATH`, then the build pinned by
+  `playwright-core` (`chromium.executablePath()`), then the newest build in the
+  Playwright browser cache, then common system Chrome and Chromium paths. To install the build that
   matches the pinned `playwright-core`, run `npm ci` and then
   `npx playwright-core install chromium` in this folder.
 
@@ -61,10 +62,26 @@ npm ci
 npm test
 ```
 
-`test/smoke.test.js` renders `test/fixtures/sample.md` (a heading, a table and
-one flowchart) and checks the `%PDF` header and the reported diagram count,
-renders `test/fixtures/tall.md` and checks that the diagram is sliced across
-pages, and checks that an unknown option exits 1.
+The tests need `pdfinfo`, `pdftotext` and `pdfimages` from poppler-utils. Set
+`MD2PDF_TEST_OUT` to choose where the test PDFs are written; the default is the
+system temp directory. Each test removes its output.
+
+`test/smoke.test.js` holds 14 tests. Eight render a PDF in Chromium and inspect
+it with poppler-utils:
+
+| Test | Checks |
+|---|---|
+| `sample.md` | 1 page; title, `--note` text, `Page 1 of 1`, a table cell and diagram labels in the PDF text |
+| `tall.md` | Reported slice count, page count at least that, first and last node labels present |
+| `wide.md` | Reported band count above 1, first and last node labels present |
+| `long-table.md` | At least 2 pages, the header row on every page, the last row present |
+| CRLF, indented and tilde fences | 3 diagrams reported, a label from each in the PDF text |
+| `inject.md` | No marker from a script in a mermaid label, a raw `<script>` or an `onerror` handler in the PDF text; `blocked` lines on stderr |
+| Raw HTML image, stylesheet and iframe | A local HTTP server receives no request |
+| Relative image with a space in its path | 1 image in the PDF |
+
+The other 6 exit before Chromium starts: a missing or remote image, and 5
+invalid argument lists.
 
 ## Limitations
 
@@ -74,4 +91,7 @@ pages, and checks that an unknown option exits 1.
 - Layout problems that do not raise an error, such as a clipped table, are not
   detected. `SKILL.md` tells Claude to render pages to PNG and inspect them.
 - markdown-it runs with `html: true`, so raw HTML in the Markdown reaches the
-  rendered page. Treat the Markdown as trusted input.
+  rendered page. Its scripts, event handlers and remote resources are blocked
+  by the page's Content Security Policy and by request interception, and are
+  listed on stderr. Local images in raw HTML `<img>` tags are not embedded and
+  are blocked; use Markdown image syntax for them.

@@ -26,7 +26,7 @@ Source: `python examples/lookahead_demo.py`
 - `markdown-to-pdf` renders a Markdown file to PDF in headless Chromium. Diagrams taller than a page are sliced across pages, diagrams far wider than tall are wrapped into bands, and table headers repeat on every page.
 - `ec2-ml-training` tells Claude how to move a training run that does not fit in local RAM onto a short-lived EC2 instance: instance and algorithm choice, the config and workflow script split, S3 transfer, termination rules.
 - `ts-ml-lookahead-audit` tells Claude how to find features that see the future in a time-series dataset, with a correlation audit and leak-free versions of two common resample and merge patterns.
-- Tests cover the shipped code: three smoke tests run the PDF renderer in Chromium, and the look-ahead tests execute the Python blocks of its `SKILL.md` as written.
+- Tests cover the shipped code: 8 of the 14 `markdown-to-pdf` tests render a PDF in Chromium and inspect its pages, text and images with poppler-utils, and the look-ahead tests execute the Python blocks of its `SKILL.md` as written.
 
 ## Install
 
@@ -48,7 +48,7 @@ Start a new Claude Code session after installing a skill. `markdown-to-pdf` also
 
 [skills/markdown-to-pdf/README.md](skills/markdown-to-pdf/README.md)
 
-Renders Markdown to a print-quality PDF. Mermaid diagrams are drawn as SVG and keep their labels readable: a diagram taller than the page is sliced into page-height windows, and one far wider than tall is cut into stacked bands. Every page gets a running header (`--note` sets the right-hand text) and a `Page N of M` footer. Rendering is local.
+Renders Markdown to a print-quality PDF. Mermaid diagrams are drawn as SVG and keep their labels readable: a diagram taller than the page is sliced into page-height windows, and one far wider than tall is cut into stacked bands. Every page gets a running header (`--note` sets the right-hand text) and a `Page N of M` footer. Rendering is local: the page blocks document scripts and every external fetch, and local images are embedded.
 
 ```bash
 node ~/.claude/skills/markdown-to-pdf/md2pdf.js report.md report.pdf --note "Draft"
@@ -142,7 +142,7 @@ python3 tools/svgchart.py docs/data.json docs/figures
 cd skills/markdown-to-pdf
 npm ci
 npx playwright-core install chromium   # skip if a Chromium is already installed
-npm test
+npm test                               # needs poppler-utils (pdfinfo, pdftotext, pdfimages)
 ```
 
 ## Project layout
@@ -165,7 +165,7 @@ docs/                        data.json, README figures, landing page
 - The look-ahead tests execute the code blocks in `SKILL.md` instead of a copy, so the documentation cannot drift from the tested code.
 - Publishing the look-ahead skill surfaced three defects in its original snippets, now fixed; `skills/ts-ml-lookahead-audit/README.md` lists them. The original daily-merge fix removed no look-ahead at all.
 - `ec2-ml-training` ships without its scripts. The interface is specified, but nothing in this repo runs it.
-- `markdown-to-pdf` scales a narrow, tall diagram up to the column width before slicing it, so such a diagram can span many pages. The PDF smoke tests check structure (header bytes, reported diagram count, slicing), not visual layout.
+- `markdown-to-pdf` scales a narrow, tall diagram up to the column width before slicing it, so such a diagram can span many pages. The PDF smoke tests check page counts, extracted text and embedded images, not visual layout.
 - The look-ahead measurements use synthetic data. They show which patterns read the future; they say nothing about the size of the effect on a real model.
 
 ## License

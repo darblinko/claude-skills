@@ -16,7 +16,10 @@ taller than the page is sliced across consecutive pages, and one far wider than
 the page is wrapped into stacked left-to-right bands. Both keep labels readable
 instead of shrinking the figure into an unreadable sliver.
 
-Nothing is uploaded. Rendering is local.
+Rendering is local. The page runs under a Content Security Policy that lets
+only the renderer's own scripts run and blocks every external fetch, and the
+browser aborts any request that gets past it. Scripts, event handlers and
+remote resources in raw HTML are blocked and listed on stderr.
 
 ## Usage
 
@@ -37,12 +40,19 @@ Output defaults to the input path with `.pdf` substituted. Options:
 The document title (browser tab, PDF metadata, left-hand running header) comes
 from the first `#` heading, falling back to the filename.
 
-The script prints a line per oversized diagram saying how it was handled. Relay
-anything still flagged as too small to the user.
+Mermaid diagrams are fenced code blocks with the info string `mermaid`, with
+backticks or tildes. Markdown images with a local path are read relative to the
+Markdown file and embedded. A missing local image, or an image with an `http`
+or `https` URL, stops the render with an error: download remote images first.
+
+The script prints a line per oversized diagram saying how it was handled, and a
+`blocked` line per script or resource the page was not allowed to run or load.
+Relay anything still flagged as too small, and any blocked line, to the user.
 
 First run installs `markdown-it`, `mermaid`, and `playwright-core` into the skill
-directory automatically. Chromium is auto-detected from the Playwright cache, then
-system Chrome/Chromium; override with `CHROME_PATH`.
+directory automatically. Chromium is found in this order: `CHROME_PATH`, the
+build pinned by `playwright-core` at Playwright's install path, the newest build
+in the Playwright cache, then system Chrome/Chromium.
 
 ## After rendering, always verify
 

@@ -48,6 +48,7 @@ function fixture(name) {
 
 function poppler(tool, args) {
   const result = spawnSync(tool, args, { encoding: 'utf8' });
+  if (result.error) throw new Error(`${tool} not runnable (install poppler-utils): ${result.error.message}`);
   assert.equal(result.status, 0, `${tool} failed: ${result.stderr}`);
   return result.stdout;
 }
