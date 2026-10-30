@@ -23,32 +23,44 @@ ML models trained on time-series feature datasets show high accuracy that does n
 Run this on any ML dataset before training:
 
 ```python
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr
 
 KNOWN_TARGET_PREFIXES = ("fwd_", "mae_", "mfe_")
+MIN_ROWS = 100
 
 
 def lookahead_audit(df, target_col, threshold=0.15, sample_size=5000, seed=42):
-    """Return (column, |r|) pairs for numeric features suspiciously correlated with the target."""
+    """Return (column, |r|) pairs for numeric features suspiciously correlated with the target.
+
+    Infinite values count as missing. A column left with fewer than MIN_ROWS finite
+    rows, or with one distinct value, cannot be scored and is named in a warning.
+    """
     sample = df.sample(min(sample_size, len(df)), random_state=seed)
-    sample = sample[sample[target_col].notna()]
-    suspicious = []
-    for col in sample.select_dtypes(include=[np.number]).columns:
+    numeric = sample.select_dtypes(include=[np.number]).replace([np.inf, -np.inf], np.nan)
+    numeric = numeric[numeric[target_col].notna()]
+    suspicious, unaudited = [], []
+    for col in numeric.columns:
         if col == target_col or col.startswith(KNOWN_TARGET_PREFIXES):
             continue  # the target itself and known forward-looking columns
-        valid = sample[[col, target_col]].dropna()
-        if len(valid) < 100 or valid[col].nunique() < 2:
+        valid = numeric[[col, target_col]].dropna()
+        if len(valid) < MIN_ROWS or valid[col].nunique() < 2 or valid[target_col].nunique() < 2:
+            unaudited.append(col)
             continue
         r, _ = pearsonr(valid[col], valid[target_col])
         if abs(r) > threshold:
             suspicious.append((col, float(abs(r))))
+    if unaudited:
+        warnings.warn(f"lookahead_audit could not score: {unaudited}", stacklevel=2)
     return sorted(suspicious, key=lambda pair: -pair[1])
 ```
 
 Call it as `lookahead_audit(df, "fwd_return_5m")` and report every returned
-column as suspicious, with its |r|.
+column as suspicious, with its |r|. Report every column named in the warning as
+not audited; a column that cannot be scored has not been shown to be leak-free.
 
 **Red flags**: Any feature with |r| > 0.15 against a short-horizon forward return. Honest 1-minute features rarely exceed |r| = 0.05. Both thresholds are rules of thumb; tune them to the horizon and the asset.
 

@@ -4,6 +4,7 @@ The snippets are executed from SKILL.md itself, so the documented code is the co
 under test.
 """
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -107,3 +108,21 @@ def test_audit_skips_a_target_without_a_known_prefix(skill):
     dataset = audit_dataset(skill).rename(columns={"fwd_return_5m": "label"})
     scores = dict(skill["lookahead_audit"](dataset, "label", threshold=0.0))
     assert "label" not in scores
+
+
+def test_audit_scores_a_feature_containing_infinity(skill):
+    target = np.arange(200, dtype=float)
+    feature = target.copy()
+    feature[0] = np.inf
+    dataset = pd.DataFrame({"target": target, "copy_of_target": feature})
+    scores = dict(skill["lookahead_audit"](dataset, "target"))
+    assert scores["copy_of_target"] == pytest.approx(1.0)
+
+
+def test_audit_warns_about_columns_it_cannot_score(skill):
+    target = np.arange(200, dtype=float)
+    dataset = pd.DataFrame(
+        {"target": target, "all_infinite": np.full(200, np.inf), "constant": np.ones(200)}
+    )
+    with pytest.warns(UserWarning, match=r"could not score: \['all_infinite', 'constant'\]"):
+        assert skill["lookahead_audit"](dataset, "target") == []
