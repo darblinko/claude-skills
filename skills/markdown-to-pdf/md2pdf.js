@@ -2,10 +2,12 @@
 // Render a Markdown file to a print-quality PDF, with mermaid diagrams drawn as
 // vector SVG. Usage: node md2pdf.js <input.md> [output.pdf] [options]
 
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { fileURLToPath } = require('url');
 
 const SKILL_DIR = __dirname;
 const DEPS = ['markdown-it', 'mermaid', 'playwright-core'];
@@ -119,15 +121,67 @@ function resolveChrome() {
   );
 }
 
-// Mermaid fences are pulled out before markdown rendering so markdown-it does
-// not escape their contents; each leaves a placeholder filled in by the browser.
-function extractDiagrams(markdown) {
-  const diagrams = [];
-  const withPlaceholders = markdown.replace(/^```mermaid\n([\s\S]*?)^```/gm, (_match, body) => {
-    diagrams.push(body);
-    return `<div class="mermaid-slot" data-index="${diagrams.length - 1}"></div>`;
-  });
-  return { diagrams, withPlaceholders };
+const IMAGE_TYPES = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+};
+
+function localImagePath(src, baseDir) {
+  if (src.startsWith('file:')) return fileURLToPath(src);
+  return path.resolve(baseDir, decodeURIComponent(src.split(/[?#]/)[0]));
+}
+
+// The page is loaded from about:blank and may not fetch anything, so a local
+// image is read relative to the Markdown file and inlined as a data URI.
+function embedImage(src, baseDir, errors) {
+  if (src.startsWith('data:')) return src;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(src) && !src.startsWith('file:')) {
+    errors.push(`${src}: remote images are not fetched; download it and use a local path`);
+    return src;
+  }
+  let file;
+  try {
+    file = localImagePath(src, baseDir);
+  } catch (err) {
+    errors.push(`${src}: ${err.message}`);
+    return src;
+  }
+  const type = IMAGE_TYPES[path.extname(file).toLowerCase()];
+  if (!type) errors.push(`${src}: unsupported image type`);
+  else if (!fs.existsSync(file)) errors.push(`${src}: image not found at ${file}`);
+  else return `data:${type};base64,${fs.readFileSync(file).toString('base64')}`;
+  return src;
+}
+
+// Mermaid fences are taken from markdown-it's fence tokens, so every fence form
+// it accepts (backticks or tildes, indented, CRLF) is recognized. Each leaves a
+// placeholder that the browser fills in.
+function createMarkdown({ baseDir, diagrams, assetErrors }) {
+  const MarkdownIt = require(path.join(SKILL_DIR, 'node_modules', 'markdown-it'));
+  const md = new MarkdownIt({ html: true, linkify: false, typographer: false });
+  const { fence, image } = md.renderer.rules;
+  md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    if (token.info.trim().split(/\s+/)[0] !== 'mermaid') return fence(tokens, idx, options, env, self);
+    diagrams.push(token.content);
+    return `<div class="mermaid-slot" data-index="${diagrams.length - 1}"></div>\n`;
+  };
+  md.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    token.attrSet('src', embedImage(token.attrGet('src'), baseDir, assetErrors));
+    return image(tokens, idx, options, env, self);
+  };
+  return md;
+}
+
+// Raw HTML in the Markdown reaches the page. The policy lets only the two
+// nonce-tagged scripts below run and blocks every external fetch; images are
+// inlined as data URIs beforehand.
+function contentSecurityPolicy(nonce) {
+  return [
+    "default-src 'none'", `script-src 'nonce-${nonce}'`, "style-src 'unsafe-inline'",
+    'img-src data:', 'font-src data:', "base-uri 'none'", "form-action 'none'",
+  ].join('; ');
 }
 
 function documentTitle(markdown, inputPath) {
@@ -138,20 +192,27 @@ function documentTitle(markdown, inputPath) {
 }
 
 function buildHtml({ markdown, inputPath }) {
-  const MarkdownIt = require(path.join(SKILL_DIR, 'node_modules', 'markdown-it'));
-  const { diagrams, withPlaceholders } = extractDiagrams(markdown);
-  const body = new MarkdownIt({ html: true, linkify: false, typographer: false }).render(withPlaceholders);
+  const diagrams = [];
+  const assetErrors = [];
+  const md = createMarkdown({ baseDir: path.dirname(inputPath), diagrams, assetErrors });
+  const body = md.render(markdown);
+  const nonce = crypto.randomBytes(16).toString('base64');
   const mermaidJs = fs.readFileSync(path.join(SKILL_DIR, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js'), 'utf8');
   const css = fs.readFileSync(path.join(SKILL_DIR, 'report.css'), 'utf8');
   const title = documentTitle(markdown, inputPath);
 
   const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy(nonce)}">
+<title>${escapeHtml(title)}</title>
+<script nonce="${nonce}">
+window.blocked = [];
+document.addEventListener('securitypolicyviolation', e =>
+  window.blocked.push(e.effectiveDirective + ' ' + (e.blockedURI || 'inline')));
+</script>
 <style>${css}</style></head>
 <body><main>${body}</main>
-<script>${mermaidJs}</script>
-<script>
-const sources = ${JSON.stringify(diagrams)};
+<script nonce="${nonce}">${mermaidJs}
 const TARGET_SCALE = ${TARGET_SCALE};
 const MAX_BANDS = ${MAX_BANDS};
 mermaid.initialize({
@@ -172,7 +233,7 @@ mermaid.initialize({
 // Fit every diagram inside the printable page box. Chrome CLIPS an SVG taller
 // than the page rather than slicing it across pages, so a diagram that is not
 // height-constrained here silently loses its lower half.
-window.renderAll = async (pageHeightPx) => {
+window.renderAll = async (pageHeightPx, sources) => {
   const slots = [...document.querySelectorAll('.mermaid-slot')];
   const report = [];
   for (const slot of slots) {
@@ -266,7 +327,7 @@ function sliceIntoPages(slot, svg, displayHeight, pageHeight) {
 }
 </script>
 </body></html>`;
-  return { html, title, diagramCount: diagrams.length };
+  return { html, title, diagrams, assetErrors };
 }
 
 function escapeHtml(text) {
@@ -301,7 +362,7 @@ function runningHead(title, note) {
     <span>${escapeHtml(title)}</span>${right}</div>`;
 }
 
-async function renderPdf({ html, title, opts }) {
+async function renderPdf({ html, title, diagrams, opts }) {
   const { chromium } = require(path.join(SKILL_DIR, 'node_modules', 'playwright-core'));
   // Lay mermaid out at the width the diagrams will occupy in print, so
   // label wrapping measured at render time matches the printed result.
@@ -310,8 +371,14 @@ async function renderPdf({ html, title, opts }) {
   const browser = await chromium.launch({ executablePath: resolveChrome() });
   try {
     const page = await browser.newPage({ viewport: { width: box.width, height: box.height } });
+    const aborted = [];
+    await page.route('**/*', route => {
+      aborted.push('request ' + route.request().url());
+      return route.abort();
+    });
     await page.setContent(html, { waitUntil: 'load' });
-    const rendered = await page.evaluate(h => window.renderAll(h), box.height);
+    const rendered = await page.evaluate(([h, sources]) => window.renderAll(h, sources), [box.height, diagrams]);
+    const blocked = [...await page.evaluate(() => window.blocked), ...aborted];
     await page.emulateMedia({ media: 'print' });
     await page.pdf({
       path: opts.output,
@@ -325,7 +392,7 @@ async function renderPdf({ html, title, opts }) {
         padding:0 16mm;text-align:center;">
         Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`,
     });
-    return rendered;
+    return { rendered, blocked };
   } finally {
     await browser.close();
   }
@@ -336,12 +403,14 @@ async function main() {
   if (!fs.existsSync(opts.input)) throw new Error(`input not found: ${opts.input}`);
   ensureDeps();
   const markdown = fs.readFileSync(opts.input, 'utf8');
-  const { html, title, diagramCount } = buildHtml({ markdown, inputPath: opts.input });
-  const rendered = await renderPdf({ html, title, opts });
-  if (rendered.length !== diagramCount) {
-    throw new Error(`expected ${diagramCount} mermaid diagram(s), rendered ${rendered.length}`);
+  const { html, title, diagrams, assetErrors } = buildHtml({ markdown, inputPath: opts.input });
+  if (assetErrors.length) throw new Error(`cannot embed image(s):\n  ${assetErrors.join('\n  ')}`);
+  const { rendered, blocked } = await renderPdf({ html, title, diagrams, opts });
+  if (rendered.length !== diagrams.length) {
+    throw new Error(`expected ${diagrams.length} mermaid diagram(s), rendered ${rendered.length}`);
   }
-  console.log(`${opts.output}: ${diagramCount} diagram(s), title "${title}"`);
+  for (const item of blocked) console.error(`md2pdf: blocked ${item}`);
+  console.log(`${opts.output}: ${diagrams.length} diagram(s), title "${title}"`);
 
   for (const d of rendered) {
     const size = `${Math.round(d.w)}x${Math.round(d.h)}px`;
