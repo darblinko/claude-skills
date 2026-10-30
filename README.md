@@ -40,7 +40,7 @@ cp -r claude-skills/skills/markdown-to-pdf ~/.claude/skills/
 ln -s "$PWD/claude-skills/skills/ts-ml-lookahead-audit" ~/.claude/skills/ts-ml-lookahead-audit
 ```
 
-Start a new Claude Code session after installing a skill. `markdown-to-pdf` also needs Node.js 18 or later and a Chromium build; see its README.
+Start a new Claude Code session after installing a skill. `markdown-to-pdf` also needs Node.js 20.19 or later and a Chromium build; see its README.
 
 ## Skills
 

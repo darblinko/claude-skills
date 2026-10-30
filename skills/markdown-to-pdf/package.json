@@ -5,7 +5,7 @@
   "description": "Claude Code skill that renders Markdown with mermaid diagrams to a paginated PDF in headless Chromium.",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19.0"
   },
   "scripts": {
     "test": "node --test test/smoke.test.js"

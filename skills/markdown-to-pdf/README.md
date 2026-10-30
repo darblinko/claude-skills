@@ -9,7 +9,8 @@ runs on its own.
 
 ## Requirements
 
-- Node.js 18 or later (`engines` in `package.json`).
+- Node.js 20.19 or later (`engines` in `package.json`). The pinned `playwright-core`
+  requires Node 20 and its `entities` dependency requires 20.19.0.
 - A Chromium build. `md2pdf.js` checks `CHROME_PATH`, then the Playwright browser
   cache, then common system Chrome and Chromium paths. To install the build that
   matches the pinned `playwright-core`, run `npm ci` and then
