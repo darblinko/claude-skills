@@ -55,11 +55,17 @@ def bucket_keys(bars):
     return bucket_start, trading_day
 
 
-def future_reads(bars, feature):
-    """Count bars whose feature value is a close recorded after the bar itself."""
-    recorded_at = dict(zip(bars["close"].to_numpy(), bars.index, strict=True))
-    values = feature.dropna()
-    return sum(recorded_at[value] > bar_time for bar_time, value in values.items())
+def epoch_seconds(index):
+    return pd.Series((index - pd.Timestamp(0)) / pd.Timedelta("1s"), index=index)
+
+
+def future_reads(bars, read_from):
+    """Count bars whose feature was read from a later bar.
+
+    read_from holds, per bar, the epoch seconds of the bar the value came from
+    (see bucket_sources); NaN means no value was read.
+    """
+    return int((read_from > epoch_seconds(bars.index)).sum())
 
 
 def bucket_features(skill, bars):
@@ -71,6 +77,15 @@ def bucket_features(skill, bars):
         ),
         "gap-safe": skill["bucket_last_safe_with_gaps"](bars, "close", bucket_start, trading_day),
     }
+
+
+def bucket_sources(skill, bars):
+    """Run the bucket patterns on each bar's own timestamp instead of its close.
+
+    Each result value is then the time of the bar it was read from, so provenance
+    does not depend on close prices being unique.
+    """
+    return bucket_features(skill, bars.assign(close=epoch_seconds(bars.index)))
 
 
 def audit_dataset(skill, sessions=10, seed=1):
@@ -101,8 +116,8 @@ def future_read_chart(skill):
     shares = {name: [] for name in ("leaky", "row shift", "gap-safe")}
     for params in CONDITIONS.values():
         bars = make_bars(**params)
-        for name, feature in bucket_features(skill, bars).items():
-            shares[name].append(round(future_reads(bars, feature) / len(bars), 4))
+        for name, read_from in bucket_sources(skill, bars).items():
+            shares[name].append(round(future_reads(bars, read_from) / len(bars), 4))
     return {
         "name": "future-reads",
         "type": "columns",

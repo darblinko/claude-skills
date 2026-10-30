@@ -14,6 +14,8 @@ from examples.lookahead_demo import (
     CONDITIONS,
     audit_dataset,
     bucket_features,
+    bucket_sources,
+    epoch_seconds,
     future_reads,
     load_skill_snippets,
     make_bars,
@@ -31,25 +33,42 @@ def test_bucket_last_leaky_reads_the_future(skill):
     bars = make_bars()
     leaking_bars_per_bucket = BUCKET_MINUTES - 1
     buckets = 2 * BARS_PER_SESSION // BUCKET_MINUTES
-    feature = bucket_features(skill, bars)["leaky"]
-    assert future_reads(bars, feature) == leaking_bars_per_bucket * buckets
+    read_from = bucket_sources(skill, bars)["leaky"]
+    assert future_reads(bars, read_from) == leaking_bars_per_bucket * buckets
+
+
+def test_future_reads_does_not_depend_on_repeated_closes(skill):
+    bars = make_bars()
+    bars["close"] = np.resize([100.0, 101.0, 100.0], len(bars))
+    sources = bucket_sources(skill, bars)
+    buckets = 2 * BARS_PER_SESSION // BUCKET_MINUTES
+    assert future_reads(bars, sources["leaky"]) == (BUCKET_MINUTES - 1) * buckets
+    assert future_reads(bars, sources["gap-safe"]) == 0
+
+
+def test_future_reads_counts_no_reads_for_a_bar_reading_itself():
+    bars = pd.DataFrame(
+        {"close": [100.0, 101.0, 100.0]},
+        index=pd.date_range("2026-01-05 09:30", periods=3, freq="1min"),
+    )
+    assert future_reads(bars, epoch_seconds(bars.index)) == 0
 
 
 def test_bucket_last_safe_has_no_future_reads(skill):
     bars = make_bars()
-    feature = bucket_features(skill, bars)["row shift"]
-    assert future_reads(bars, feature) == 0
-    assert feature.notna().sum() == 2 * (BARS_PER_SESSION - BUCKET_MINUTES)
+    read_from = bucket_sources(skill, bars)["row shift"]
+    assert future_reads(bars, read_from) == 0
+    assert read_from.notna().sum() == 2 * (BARS_PER_SESSION - BUCKET_MINUTES)
 
 
 def test_bucket_last_safe_with_missing_bars_has_no_future_reads(skill):
     bars = make_bars(drop_fraction=0.1)
-    assert future_reads(bars, bucket_features(skill, bars)["row shift"]) == 0
+    assert future_reads(bars, bucket_sources(skill, bars)["row shift"]) == 0
 
 
 def test_bucket_last_safe_leaks_on_bars_finer_than_one_minute(skill):
     bars = make_bars(freq="30s")
-    assert future_reads(bars, bucket_features(skill, bars)["row shift"]) > 0
+    assert future_reads(bars, bucket_sources(skill, bars)["row shift"]) > 0
 
 
 def test_bucket_last_safe_with_gaps_reads_the_previous_bucket_of_the_same_day(skill):
@@ -76,9 +95,9 @@ def test_bucket_last_safe_with_gaps_reads_the_previous_bucket_of_the_same_day(sk
 @pytest.mark.parametrize("condition", list(CONDITIONS))
 def test_bucket_last_safe_with_gaps_has_no_future_reads(skill, condition):
     bars = make_bars(**CONDITIONS[condition])
-    feature = bucket_features(skill, bars)["gap-safe"]
-    assert feature.notna().sum() > 0
-    assert future_reads(bars, feature) == 0
+    read_from = bucket_sources(skill, bars)["gap-safe"]
+    assert read_from.notna().sum() > 0
+    assert future_reads(bars, read_from) == 0
 
 
 def daily_frames():
