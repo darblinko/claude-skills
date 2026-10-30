@@ -74,8 +74,10 @@ function newestPlaywrightChrome() {
   const builds = fs.readdirSync(root)
     .filter(d => d.startsWith('chromium-'))
     .sort((a, b) => Number(b.split('-')[1]) - Number(a.split('-')[1]));
+  const testingApp = 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
   const relatives = [
     'chrome-linux64/chrome', 'chrome-linux/chrome',
+    `chrome-mac-arm64/${testingApp}`, `chrome-mac-x64/${testingApp}`,
     'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
   ];
   for (const build of builds) {
@@ -87,8 +89,22 @@ function newestPlaywrightChrome() {
   return null;
 }
 
+// The build pinned by the installed playwright-core, at the path Playwright
+// itself installs it to on this platform.
+function pinnedPlaywrightChrome() {
+  try {
+    const { chromium } = require(path.join(SKILL_DIR, 'node_modules', 'playwright-core'));
+    const pinned = chromium.executablePath();
+    return pinned && fs.existsSync(pinned) ? pinned : null;
+  } catch {
+    return null;
+  }
+}
+
 function resolveChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
+  const pinned = pinnedPlaywrightChrome();
+  if (pinned) return pinned;
   const fromPlaywright = newestPlaywrightChrome();
   if (fromPlaywright) return fromPlaywright;
   const systemPaths = [
