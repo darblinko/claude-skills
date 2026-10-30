@@ -52,6 +52,27 @@ def test_bucket_last_safe_leaks_on_bars_finer_than_one_minute(skill):
     assert future_reads(bars, bucket_features(skill, bars)["row shift"]) > 0
 
 
+def test_bucket_last_safe_with_gaps_reads_the_previous_bucket_of_the_same_day(skill):
+    times = pd.DatetimeIndex(
+        [
+            "2026-01-05 09:30",
+            "2026-01-05 09:31",
+            "2026-01-05 09:34",
+            # no bars in the 09:35 bucket
+            "2026-01-05 09:40",
+            "2026-01-05 09:42",
+            "2026-01-06 09:30",
+            "2026-01-06 09:36",
+            "2026-01-06 09:37",
+        ]
+    )
+    bars = pd.DataFrame({"close": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]}, index=times)
+    feature = bucket_features(skill, bars)["gap-safe"]
+    nan = float("nan")
+    expected = pd.Series([nan, nan, nan, 3.0, 3.0, nan, 6.0, 6.0], index=times)
+    pd.testing.assert_series_equal(feature, expected, check_names=False)
+
+
 @pytest.mark.parametrize("condition", list(CONDITIONS))
 def test_bucket_last_safe_with_gaps_has_no_future_reads(skill, condition):
     bars = make_bars(**CONDITIONS[condition])
