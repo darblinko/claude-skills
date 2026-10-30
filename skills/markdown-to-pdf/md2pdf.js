@@ -27,18 +27,27 @@ const LEGIBLE_SCALE = 0.3;
 const TARGET_SCALE = 0.45;
 const MAX_BANDS = 6;
 
+const USAGE = 'usage: md2pdf.js <input.md> [output.pdf] [--note TEXT] [--format Letter|A4] [--landscape]';
+
+function optionValue(argv, i) {
+  const value = argv[i + 1];
+  if (value === undefined || value.startsWith('--')) throw new Error(`${argv[i]} needs a value`);
+  return value;
+}
+
 function parseArgs(argv) {
   const positional = [];
   const opts = { format: 'Letter', note: '', landscape: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--note') opts.note = argv[++i] || '';
-    else if (arg === '--format') opts.format = argv[++i] || 'Letter';
+    if (arg === '--note') opts.note = optionValue(argv, i++);
+    else if (arg === '--format') opts.format = optionValue(argv, i++);
     else if (arg === '--landscape') opts.landscape = true;
     else if (arg.startsWith('--')) throw new Error(`unknown option: ${arg}`);
     else positional.push(arg);
   }
-  if (!positional[0]) throw new Error('usage: md2pdf.js <input.md> [output.pdf] [--note TEXT] [--format Letter|A4] [--landscape]');
+  if (!positional[0]) throw new Error(USAGE);
+  if (positional.length > 2) throw new Error(`unexpected argument: ${positional[2]}. ${USAGE}`);
   if (!PAGE_SIZES[opts.format]) throw new Error(`--format must be one of: ${Object.keys(PAGE_SIZES).join(', ')}`);
   opts.input = path.resolve(positional[0]);
   opts.output = path.resolve(positional[1] || opts.input.replace(/\.md$/i, '') + '.pdf');
